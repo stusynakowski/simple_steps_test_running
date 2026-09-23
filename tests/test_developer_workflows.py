@@ -26,6 +26,7 @@ from __future__ import annotations
 import pytest
 
 from simple_steps_core import (
+    DEFAULT_CODECS,
     App,
     AppConfig,
     CoreEngine,
@@ -37,6 +38,7 @@ from simple_steps_core import (
     SessionContext,
     SessionManager,
     StepStatus,
+    ToolCall,
     ToolRegistry,
     Workflow,
     make_session_id,
@@ -100,24 +102,25 @@ def test_resource_container_alone():
 @pytest.mark.capability("component.data_store")
 def test_data_store_alone():
     """The value store under a session: put, bind to a step, read back."""
-    store = DataStore()
-    ref = store.put([1, 2, 3])
+    store = DataStore(DEFAULT_CODECS)
+    # The caller supplies the ref id: the store does not mint one.
+    store.put("ref-1", [1, 2, 3])
 
-    assert store.has(ref)
-    assert store.get(ref) == [1, 2, 3]
+    assert store.has("ref-1")
+    assert store.get("ref-1") == [1, 2, 3]
 
-    store.bind_step("step1", ref)
-    assert store.ref_for_step("step1") == ref
+    store.bind_step("step1", "ref-1")
+    assert store.ref_for_step("step1") == "ref-1"
     assert store.value_for_step("step1") == [1, 2, 3]
-    assert store.shape(ref).kind
+    assert store.shape("ref-1").kind
 
 
 @pytest.mark.capability("component.resolver", "flow.step_ref", "flow.literal")
 def test_reference_resolver_alone():
     """Literals pass through; `stepN` becomes that step's value."""
     context = SessionContext(session_id="resolve")
-    ref = context.put({"total": 42, "rows": [1, 2, 3]})
-    context.bind_step("step1", ref)
+    context.put("ref-1", {"total": 42, "rows": [1, 2, 3]})
+    context.bind_step("step1", "ref-1")
 
     resolver = ReferenceResolver(context)
     assert resolver.resolve_value(7) == 7
@@ -137,9 +140,7 @@ def test_core_engine_alone():
     context = SessionContext(session_id="engine")
 
     ref, value = engine.execute(
-        steps.functions.FUNCTIONS and
-        __import__("simple_steps_core", fromlist=["ToolCall"]).ToolCall(
-            operation_id="make_nested", arguments={"rows": 2, "per_row": 2}),
+        ToolCall(operation_id="make_nested", arguments={"rows": 2, "per_row": 2}),
         context,
     )
     assert value == [[1, 2], [3, 4]]
@@ -148,17 +149,27 @@ def test_core_engine_alone():
 
 @pytest.mark.capability("component.session_manager", "res.isolation")
 def test_session_manager_alone():
-    """Hands out one context per id, and the ids are structured."""
+    """Hands out one context per id, and the ids are structured.
+
+    `get_or_create` is async (it takes a lock); `get` and `discard` are not.
+    A caller that forgets the await gets a coroutine object back rather than
+    a context, which fails later and somewhere else.
+    """
+    import asyncio
+
     manager = SessionManager()
     session_id = make_session_id("alice", "wf", "run1")
+    other_id = make_session_id("bob", "wf", "run1")
     assert "alice" in session_id
 
-    first = manager.get_or_create(session_id)
-    assert manager.get_or_create(session_id) is first, "a second call rebuilt it"
-    assert manager.get_or_create(make_session_id("bob", "wf", "run1")) is not first
+    first = asyncio.run(manager.get_or_create(session_id))
+    assert asyncio.run(manager.get_or_create(session_id)) is first, "rebuilt it"
+    assert asyncio.run(manager.get_or_create(other_id)) is not first
+    assert manager.get(session_id) is first
 
     manager.discard(session_id)
-    assert manager.get_or_create(session_id) is not first
+    assert manager.get(session_id) is None
+    assert asyncio.run(manager.get_or_create(session_id)) is not first
 
 
 # ═════════════════════════════════════════════════════════════════════════

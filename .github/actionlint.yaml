@@ -1,0 +1,5 @@
+# Declares the custom label on the self-hosted Mac so actionlint stops
+# reporting it as unknown.
+self-hosted-runner:
+  labels:
+    - macos-local

@@ -23,9 +23,6 @@ jobs:
 
     env:
       MODE: ${{ inputs.mode || 'locked' }}
-      # Keep the venv off the persistent workspace. RUNNER_TEMP is wiped by the
-      # runner at the start of every job, so the environment cannot survive.
-      UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/venv
       # Never reuse a downloaded or previously built artifact. This is the line
       # that turns "fresh venv" into "fresh build" -- it re-downloads and
       # re-builds all 103 packages, so a dependency that has gone missing or
@@ -40,7 +37,12 @@ jobs:
       - name: Scrub leftovers from previous runs
         run: |
           set -euo pipefail
-          rm -rf "$UV_PROJECT_ENVIRONMENT"
+          # Keep the venv off the persistent workspace. RUNNER_TEMP is wiped by
+          # the runner at the start of every job, so it cannot survive. This is
+          # set here rather than in job-level `env:` because the `runner`
+          # context is not available there -- only $RUNNER_TEMP in a shell is.
+          echo "UV_PROJECT_ENVIRONMENT=${RUNNER_TEMP}/venv" >> "$GITHUB_ENV"
+          rm -rf "${RUNNER_TEMP}/venv"
           rm -rf "${GITHUB_WORKSPACE}/.venv" "${GITHUB_WORKSPACE}/.pytest_cache"
           find "${GITHUB_WORKSPACE}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
           uv cache clean 2>/dev/null || true
@@ -146,4 +148,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: rm -rf "$UV_PROJECT_ENVIRONMENT"
+        run: rm -rf "${RUNNER_TEMP}/venv"

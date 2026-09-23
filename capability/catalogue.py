@@ -290,9 +290,69 @@ PERSISTENCE = [
        priority="core"),
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Components on their own
+#    Each object usable without the Workflow facade — what you reach for when
+#    the facade does not fit, and what localises a failure when it does.
+# ─────────────────────────────────────────────────────────────────────────────
+COMPONENTS = [
+    _c("component.registry", "components", "ToolRegistry works standalone",
+       "Register, look up, list, freeze. The piece a server builds at startup.",
+       priority="core"),
+    _c("component.resources", "components", "ResourceContainer works standalone",
+       "Declare, lazily build, check, clone. Independent of any workflow.",
+       priority="core"),
+    _c("component.data_store", "components", "DataStore works standalone",
+       "put/get/bind_step is the value layer under every session.",
+       priority="important"),
+    _c("component.resolver", "components", "ReferenceResolver works standalone",
+       "Turning `step1.total` into a value is testable without an engine.",
+       priority="important"),
+    _c("component.engine", "components", "CoreEngine executes a single call",
+       "One ToolCall against one context — no Workflow needed.",
+       priority="core"),
+    _c("component.session_manager", "components", "SessionManager hands out contexts",
+       "One context per session id, safely, for a concurrent server.",
+       priority="important",
+       note="`get_or_create` is async while `get`/`discard` are not — easy to "
+            "await-by-accident or forget."),
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. How people actually develop
+#    Four styles, all of which must work. Style `dev.incremental` is the one
+#    that breaks quietly: a library that needs the whole graph before running
+#    anything is unusable in a notebook, and no end-to-end test would notice.
+# ─────────────────────────────────────────────────────────────────────────────
+DEVELOPMENT = [
+    _c("dev.decorator", "development", "`@register_tool` registers a working tool",
+       "The first thing the docs tell someone to type.",
+       priority="core",
+       note="Writes to the process-global REGISTRY, so a test using it must "
+            "clean up or it leaks into every later test."),
+    _c("dev.app_facade", "development", "App → Session → Workflow works end to end",
+       "The deployed path: one app, many users, isolated resources.",
+       priority="core"),
+    _c("dev.incremental", "development", "Build and run a step at a time",
+       "The notebook loop. Nothing may require a complete graph before "
+       "running anything.",
+       priority="core"),
+    _c("dev.edit_rerun", "development", "Replace a step and re-run it",
+       "Change an argument, run again, get the new answer.",
+       priority="core",
+       note="`Operation` is frozen, so editing means replacing the step."),
+    _c("dev.debug_one_tool", "development", "Run one tool with no workflow at all",
+       "The first move when a step misbehaves.",
+       priority="important"),
+    _c("dev.declarative", "development", "Build a workflow from data, not Python",
+       "A saved definition, a UI's output, or another service's payload.",
+       priority="important"),
+]
+
 CATALOGUE: list[Capability] = [
     *AUTHORING, *RESOURCES, *ORCHESTRATION,
     *DATAFLOW, *EXECUTION, *INSPECTION, *PERSISTENCE,
+    *COMPONENTS, *DEVELOPMENT,
 ]
 
 BY_ID: dict[str, Capability] = {c.id: c for c in CATALOGUE}

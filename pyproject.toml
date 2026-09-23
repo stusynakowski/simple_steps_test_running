@@ -11,7 +11,10 @@ description = "Consumer test bed for the simple-steps-core library"
 requires-python = ">=3.12,<3.13"
 
 dependencies = [
-  "simple-steps-core",
+  # The `dashboard` extra pulls Streamlit, which the library's optional UI
+  # surface needs. It is a hard dependency *here* because this repo tests that
+  # surface; a consumer who only wants the engine installs the base package.
+  "simple-steps-core[dashboard]",
 ]
 
 [dependency-groups]
