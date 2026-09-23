@@ -44,6 +44,7 @@ class Observation:
     tests: list[str] = field(default_factory=list)
     verdicts: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
 
     @property
     def verdict(self) -> str:
@@ -67,10 +68,11 @@ def observations(claims: dict[str, list[tuple[str, str]]]) -> dict[str, Observat
     out: dict[str, Observation] = {}
     for capability in CATALOGUE:
         obs = Observation(capability.id)
-        for test_name, verdict, reason in claims.get(capability.id, []):
+        for test_name, verdict, reason, source in claims.get(capability.id, []):
             obs.tests.append(test_name)
             obs.verdicts.append(verdict)
             obs.reasons.append(reason)
+            obs.sources.append(source)
         out[capability.id] = obs
     return out
 
@@ -174,6 +176,7 @@ def as_payload(obs: dict[str, Observation]) -> dict:
                 "verdict": o.verdict,
                 "reason": o.reason,
                 "tests": sorted(set(o.tests)),
+                "sources": sorted(set(o.sources)),
                 "priority": BY_ID[i].priority,
                 "area": BY_ID[i].area,
             }

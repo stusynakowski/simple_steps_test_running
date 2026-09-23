@@ -15,19 +15,20 @@ Generated from the test run — do not edit by hand. Declare capabilities in
 
 | verdict | count | share |
 | --- | ---: | ---: |
-| works | 41 | 72% |
+| works | 49 | 84% |
 | awkward | 0 | 0% |
-| gap | 4 | 7% |
+| gap | 6 | 10% |
 | broken | 0 | 0% |
-| untested | 12 | 21% |
+| untested | 3 | 5% |
 
-**57 declared capabilities.**
+**58 declared capabilities.**
 
 ## Core capabilities not yet proven
 
 - `orch.map` — Apply a tool to each item (mode='map') (**gap**)
 - `flow.unknown_ref` — A reference to a missing step fails validation (**gap**)
 - `inspect.validate` — `wf.validate()` checks tools, refs and resources (**gap**)
+- `persist.recipe_only` — The recipe (`to_json`) excludes computed values (**gap**)
 
 ## authoring
 
@@ -39,8 +40,8 @@ Generated from the test run — do not edit by hand. Declare capabilities in
 | OK | `auth.defaults` | Optional params with defaults are non-required | core | works | `test_annotations_become_a_schema_with_optional_params` |
 | OK | `auth.dual_mode` | A registered tool is callable deferred and immediate | important | works | `test_a_tool_runs_immediately_and_defers`, `test_each_tool_alone_reproduces_its_plain_function[example0_identity]`, `test_each_tool_alone_reproduces_its_plain_function[example1_math]` |
 | OK | `auth.docstring` | The docstring's first paragraph becomes the description | important | works | `test_annotations_become_a_schema_with_optional_params` |
-| ?? | `auth.guardrails` | Per-argument guardrails reject bad values | important | untested | — |
-| ?? | `auth.output_schema` | The return annotation becomes an output schema | important | untested | — |
+| OK | `auth.guardrails` | Per-argument guardrails reject bad values | important | works | `test_a_guardrail_rejects_a_bad_argument_before_the_tool_runs` |
+| OK | `auth.output_schema` | The return annotation becomes an output schema | important | works | `test_the_return_annotation_becomes_an_output_schema` |
 
 ## resources
 
@@ -103,8 +104,8 @@ Generated from the test run — do not edit by hand. Declare capabilities in
 | OK | `flow.literal` | Literal arguments pass through unchanged | core | works | `test_source_runs_once_and_yields_the_nested_collection` |
 | OK | `flow.step_ref` | `"step1"` resolves to that step's output | core | works | `test_the_flow_validates_before_anything_runs`, `test_the_workflow_matches_plain_python_at_every_phase[example0_identity]`, `test_the_workflow_matches_plain_python_at_every_phase[example1_math]` |
 | OK | `flow.field_ref` | `"step1.total"` resolves a field of an output | core | works | `test_a_type_changing_reduce_needs_an_explicit_initial` |
-| ?? | `flow.index_ref` | `"step1.rows[0]"` resolves an index | important | untested | — |
-| ?? | `flow.type_check` | References are type-checked before running | important | untested | — |
+| -- | `flow.index_ref` | `"step1.rows[0]"` resolves an index | important | gap | `test_a_bracket_index_is_currently_ignored_entirely`, `test_a_bracket_index_selects_one_element_of_a_step_output` |
+| OK | `flow.type_check` | References are type-checked before running | important | works | `test_references_are_type_checked_before_the_workflow_runs` |
 | -- | `flow.unknown_ref` | A reference to a missing step fails validation | core | gap | `test_a_reference_to_a_step_that_does_not_exist_fails_validation`, `test_a_typoed_reference_degrades_to_a_literal_string` |
 
 ## execution
@@ -114,10 +115,10 @@ Generated from the test run — do not edit by hand. Declare capabilities in
 | OK | `exec.run_all` | Run a whole workflow synchronously | core | works | `test_every_step_completes`, `test_every_step_completes[example0_identity]`, `test_every_step_completes[example1_math]`, `test_the_final_value_matches_plain_python[example0_identity]`, `test_the_final_value_matches_plain_python[example1_math]` |
 | OK | `exec.arun_all` | Run a whole workflow asynchronously | core | works | `test_every_step_completes[example0_identity]`, `test_every_step_completes[example1_math]`, `test_the_async_flow_runs_to_completion` |
 | OK | `exec.step` | Run one step at a time | core | works | `test_a_flow_can_be_advanced_one_step_at_a_time` |
-| ?? | `exec.stage` | Run a named/numbered stage | important | untested | — |
+| OK | `exec.stage` | Run a named/numbered stage | important | works | `test_steps_can_be_grouped_into_stages_and_run_a_stage_at_a_time` |
 | OK | `exec.failure_isolated` | A failed step is recorded, not raised | core | works | `test_fail_fast_aborts_the_step_and_records_it`, `test_one_poisoned_item_does_not_sink_the_batch` |
-| OK | `exec.rerun` | Re-running a step replaces its output | important | works | `test_running_the_same_flow_twice_gives_the_same_answer[example0_identity]`, `test_running_the_same_flow_twice_gives_the_same_answer[example1_math]` |
-| ?? | `exec.sync_in_async` | Sync `run()` refuses to nest in a running loop | important | untested | — |
+| OK | `exec.rerun` | Re-running a step replaces its output | important | works | `test_a_half_finished_session_resumes_where_it_stopped`, `test_running_the_same_flow_twice_gives_the_same_answer[example0_identity]`, `test_running_the_same_flow_twice_gives_the_same_answer[example1_math]` |
+| OK | `exec.sync_in_async` | Sync `run()` refuses to nest in a running loop | important | works | `test_sync_run_refuses_to_drive_an_orchestrator_inside_a_running_loop` |
 
 <details><summary>Notes &amp; sharp edges</summary>
 
@@ -133,14 +134,21 @@ Generated from the test run — do not edit by hand. Declare capabilities in
 | OK | `inspect.info` | Every object has an `info()` summary table | important | works | `test_a_workflow_can_be_inspected_without_running_it` |
 | OK | `inspect.repr` | Every object has a dense one-line `__repr__` | important | works | `test_a_workflow_can_be_inspected_without_running_it` |
 | OK | `inspect.preview` | `wf.preview(step)` shows the first N rows | important | works | `test_a_workflow_can_be_inspected_without_running_it` |
-| ?? | `inspect.shape` | A step announces its output shape before running | important | untested | — |
+| OK | `inspect.shape` | A step announces its output shape before running | important | works | `test_a_step_can_be_inspected_before_it_has_run` |
 | OK | `inspect.tools` | The registered tool contracts are listable | core | works | `test_every_plain_function_is_a_registered_tool[example0_identity]`, `test_every_plain_function_is_a_registered_tool[example1_math]`, `test_plain_functions_become_listable_tools` |
 
 ## persistence
 
 | | id | capability | priority | verdict | exercised by |
 | --- | --- | --- | --- | --- | --- |
-| OK | `persist.wf_json` | A workflow round-trips through JSON | core | works | `test_a_json_round_trip_still_produces_the_same_answer[example0_identity]`, `test_a_json_round_trip_still_produces_the_same_answer[example1_math]`, `test_a_workflow_round_trips_through_json_without_its_resources` |
-| ?? | `persist.session` | A session snapshot round-trips with its data | important | untested | — |
-| ?? | `persist.codecs` | Custom types survive via codecs | important | untested | — |
-| OK | `persist.resources_excluded` | Resources are never serialized | core | works | `test_a_json_round_trip_still_produces_the_same_answer[example0_identity]`, `test_a_json_round_trip_still_produces_the_same_answer[example1_math]`, `test_a_workflow_round_trips_through_json_without_its_resources` |
+| OK | `persist.wf_json` | A workflow round-trips through JSON | core | works | `test_a_json_round_trip_still_produces_the_same_answer[example0_identity]`, `test_a_json_round_trip_still_produces_the_same_answer[example1_math]`, `test_a_workflow_round_trips_through_json_without_its_resources`, `test_the_recipe_round_trips_through_a_file_and_still_runs` |
+| -- | `persist.recipe_only` | The recipe (`to_json`) excludes computed values | core | gap | `test_the_recipe_carries_no_values`, `test_the_recipe_currently_embeds_every_computed_value` |
+| OK | `persist.session` | A session snapshot round-trips with its data | important | works | `test_a_finished_session_reloads_from_disk_with_every_value`, `test_a_half_finished_session_resumes_where_it_stopped`, `test_a_session_snapshot_round_trips_with_its_data` |
+| OK | `persist.codecs` | Custom types survive via codecs | important | works | `test_a_custom_codec_carries_a_non_json_type_through_a_file`, `test_an_unserializable_value_fails_loudly_with_an_actionable_message`, `test_loading_without_the_codec_that_wrote_it_fails_rather_than_guessing` |
+| OK | `persist.resources_excluded` | Resources are never serialized | core | works | `test_a_json_round_trip_still_produces_the_same_answer[example0_identity]`, `test_a_json_round_trip_still_produces_the_same_answer[example1_math]`, `test_a_snapshot_never_contains_a_resource`, `test_a_workflow_round_trips_through_json_without_its_resources` |
+
+<details><summary>Notes &amp; sharp edges</summary>
+
+- `persist.recipe_only` — `to_json` documents 'payloads excluded' but dumps list[Step], and Step embeds output.value inline — so every computed value travels.
+
+</details>

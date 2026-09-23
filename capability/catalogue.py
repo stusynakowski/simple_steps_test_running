@@ -273,6 +273,12 @@ PERSISTENCE = [
     _c("persist.wf_json", "persistence", "A workflow round-trips through JSON",
        "Save the *recipe* — no data, just the steps.",
        priority="core"),
+    _c("persist.recipe_only", "persistence", "The recipe (`to_json`) excludes computed values",
+       "Sharing a workflow definition must not ship the data it ran on. "
+       "Someone pasting a 'recipe' into a ticket expects steps, not customer rows.",
+       priority="core",
+       note="`to_json` documents 'payloads excluded' but dumps list[Step], and "
+            "Step embeds output.value inline — so every computed value travels."),
     _c("persist.session", "persistence", "A session snapshot round-trips with its data",
        "Resume a half-finished run tomorrow.",
        priority="important"),

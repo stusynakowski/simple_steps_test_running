@@ -86,9 +86,13 @@ def pytest_runtest_makereport(item, call):
         verdict = "broken"
         reason = str(report.longrepr).strip().splitlines()[-1][:300] if report.longrepr else ""
 
+    # The file is recorded too: it is what lets a report say *which example*
+    # proves a capability, and therefore what an example would stop covering
+    # if it were deleted.
+    source = item.nodeid.split("::")[0]
     claims = item.config._capability_claims
     for capability_id in marker.args:
-        claims[capability_id].append((item.name, verdict, reason))
+        claims[capability_id].append((item.name, verdict, reason, source))
 
 
 def is_full_run(config) -> bool:

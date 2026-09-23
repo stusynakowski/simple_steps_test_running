@@ -76,3 +76,44 @@ def test_a_map_can_drive_a_nested_orchestration():
     raise NotImplementedError(
         "Write this once the intended nesting syntax is decided."
     )
+
+
+def _indexed_reference_flow(ref: str) -> Workflow:
+    """step2 echoes whatever `ref` resolves to."""
+    registry = tools.build_registry()
+    registry.register("echo", lambda value: value)
+    workflow = Workflow(CoreEngine(registry), session_id="index")
+    workflow["step1"] = Operation(
+        step_id="step1", name="make_nested", arguments={"rows": 3, "per_row": 3}
+    )
+    workflow["step2"] = Operation(
+        step_id="step2", name="echo", arguments={"value": ref}
+    )
+    return workflow
+
+
+@pytest.mark.capability("flow.index_ref")
+@pytest.mark.xfail(
+    strict=True,
+    reason="Bracket indexers are parsed out of a reference and then dropped: "
+           "`step1[0]` resolves to the whole of step1. Even an out-of-range "
+           "index like `step1[99]` returns the full value instead of raising.",
+)
+def test_a_bracket_index_selects_one_element_of_a_step_output():
+    workflow = _indexed_reference_flow("step1[0]")
+    workflow.run()
+    assert workflow["step2"].output.value == [1, 2, 3]
+
+
+@pytest.mark.capability("flow.index_ref")
+def test_a_bracket_index_is_currently_ignored_entirely():
+    """Pin down today's behaviour, including the out-of-range case.
+
+    `step1[99]` returning the whole collection rather than raising is the
+    part that turns a typo into a silent wrong answer downstream.
+    """
+    whole = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    for ref in ("step1[0]", "step1[1]", "step1[99]"):
+        workflow = _indexed_reference_flow(ref)
+        workflow.run()
+        assert workflow["step2"].output.value == whole, f"{ref} behaved differently"

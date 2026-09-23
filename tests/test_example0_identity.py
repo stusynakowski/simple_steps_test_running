@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from simple_steps_core import StepStatus
+from simple_steps_core import CoreEngine, Operation, StepStatus, Workflow
 
 from example0_identity_workflow import steps as tools
 
@@ -131,3 +131,124 @@ def test_a_workflow_can_be_inspected_without_running_it(flow):
     workflow = flow.build()
     assert "Workflow" in repr(workflow) or len(workflow) == 5
     assert str(workflow.info())
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Capabilities example 0 can reach without resources
+#
+# Everything below needs only plain data, which is exactly what example 0
+# has. They live here rather than in example 1 because proving them against
+# integers keeps the assertion about the library instead of about floats,
+# async, or an injected client.
+# ─────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.capability("auth.output_schema")
+def test_the_return_annotation_becomes_an_output_schema():
+    """`-> list[list[int]]` must survive into the contract.
+
+    This is what lets the next step's reference be type-checked before
+    anything runs.
+    """
+    schema = tools.build_registry().get_definition("make_nested").output_schema
+    result = schema["properties"]["result"]
+    assert result["type"] == "array"
+    assert result["items"]["items"]["type"] == "integer", "nesting was flattened"
+
+
+@pytest.mark.capability("auth.guardrails")
+def test_a_guardrail_rejects_a_bad_argument_before_the_tool_runs():
+    from simple_steps_core import ArgGuardrail, Guardrails, ValidationError
+
+    registry = tools.build_registry()
+    registry.register(
+        "bounded", lambda value: value * 2,
+        guardrails=Guardrails(arguments={"value": ArgGuardrail(minimum=0, maximum=10)}),
+    )
+    workflow = Workflow(CoreEngine(registry), session_id="guarded")
+    workflow["step1"] = Operation(step_id="step1", name="bounded",
+                                  arguments={"value": 99})
+
+    with pytest.raises(ValidationError, match="above maximum"):
+        workflow.run()
+
+    # And a value inside the range is untouched.
+    workflow["step1"] = Operation(step_id="step1", name="bounded",
+                                  arguments={"value": 4})
+    workflow.run()
+    assert workflow["step1"].output.value == 8
+
+
+@pytest.mark.capability("exec.stage")
+def test_steps_can_be_grouped_into_stages_and_run_a_stage_at_a_time():
+    registry = tools.build_registry()
+    workflow = Workflow(CoreEngine(registry), session_id="staged")
+    workflow["step1"] = Operation(step_id="step1", name="make_nested",
+                                  arguments={"rows": 2, "per_row": 2}, stage=1)
+    workflow["step2"] = Operation(step_id="step2", name="identity",
+                                  arguments={"value": 7}, stage=2)
+
+    assert workflow.stages() == [1, 2]
+    workflow.run_stage(1)
+    assert workflow["step1"].status is StepStatus.COMPLETED
+    assert workflow["step2"].status is StepStatus.PENDING, "stage 2 ran early"
+
+    workflow.run_stage(2)
+    assert workflow["step2"].status is StepStatus.COMPLETED
+
+
+@pytest.mark.capability("exec.sync_in_async")
+def test_sync_run_refuses_to_drive_an_orchestrator_inside_a_running_loop():
+    """The error a notebook or Streamlit app hits, since both own the loop.
+
+    It must be actionable — naming `aexecute` — rather than a bare
+    "this event loop is already running".
+    """
+    import asyncio
+
+    async def inside_a_loop():
+        workflow = tools.build_flow().build()
+        with pytest.raises(RuntimeError) as excinfo:
+            workflow.run()
+        return str(excinfo.value)
+
+    message = asyncio.run(inside_a_loop())
+    assert "running event loop" in message
+    assert "aexecute" in message, f"the error must say what to do instead: {message}"
+
+
+@pytest.mark.capability("flow.type_check")
+def test_references_are_type_checked_before_the_workflow_runs():
+    from simple_steps_core import check_reference_types
+
+    registry = tools.build_registry()
+    assert check_reference_types(tools.build_flow().build(), registry) == [], (
+        "the example's own flow must type-check clean"
+    )
+
+
+@pytest.mark.capability("inspect.shape")
+def test_a_step_can_be_inspected_before_it_has_run():
+    """A UI renders a placeholder card from this, before any value exists."""
+    workflow = tools.build_flow().build()
+    preview = str(workflow.preview("step1"))
+    assert "step1" in preview
+    assert "pending" in preview, "an unrun step must announce that it is pending"
+
+
+@pytest.mark.capability("persist.session")
+def test_a_session_snapshot_round_trips_with_its_data():
+    """Not just the recipe — the values a half-finished run already produced."""
+    workflow = tools.build_flow().build()
+    workflow.run_step("step1")
+    workflow.run_step("step2")
+
+    restored = Workflow.import_session(
+        workflow.export_session(), CoreEngine(tools.build_registry())
+    )
+    expected = tools.run_plain()
+    assert restored["step1"].output.value == expected["step1"]
+    assert restored["step2"].output.value == expected["step2"]
+
+    # And the restored session can carry on from where it stopped.
+    restored.run()
+    assert restored["step5"].output.value == expected["step5"]
