@@ -1,0 +1,149 @@
+name: Test simple-steps-core
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "locked = reproduce uv.lock exactly | latest = re-resolve simple-steps-core to its newest commit"
+        type: choice
+        options: [locked, latest]
+        default: locked
+  push:
+    branches: [main]
+
+# Two runs would fight over the same physical machine.
+concurrency:
+  group: self-hosted-runner
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: [self-hosted, macos-local]
+    timeout-minutes: 45
+
+    env:
+      MODE: ${{ inputs.mode || 'locked' }}
+      # Keep the venv off the persistent workspace. RUNNER_TEMP is wiped by the
+      # runner at the start of every job, so the environment cannot survive.
+      UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/venv
+      # Never reuse a downloaded or previously built artifact. This is the line
+      # that turns "fresh venv" into "fresh build" -- it re-downloads and
+      # re-builds all 103 packages, so a dependency that has gone missing or
+      # stopped building fails here instead of silently resolving from cache.
+      UV_NO_CACHE: "1"
+      # Fail instead of silently reaching for a different interpreter.
+      UV_PYTHON_DOWNLOADS: automatic
+
+    steps:
+      # A self-hosted runner keeps its disk between jobs. Everything a previous
+      # run could have left behind gets removed before anything else happens.
+      - name: Scrub leftovers from previous runs
+        run: |
+          set -euo pipefail
+          rm -rf "$UV_PROJECT_ENVIRONMENT"
+          rm -rf "${GITHUB_WORKSPACE}/.venv" "${GITHUB_WORKSPACE}/.pytest_cache"
+          find "${GITHUB_WORKSPACE}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+          uv cache clean 2>/dev/null || true
+
+      - name: Check out this repo
+        uses: actions/checkout@v4
+        with:
+          clean: true   # git clean -ffdx: drops untracked files too
+
+      # Pinning uv itself matters: an unpinned resolver is an unpinned build.
+      - name: Install a pinned uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.21"
+          enable-cache: false
+
+      - name: Install the pinned interpreter
+        run: |
+          set -euo pipefail
+          uv python install
+          uv python find
+
+      - name: Build the environment from the lockfile
+        if: env.MODE == 'locked'
+        run: |
+          set -euo pipefail
+          # --locked fails outright if uv.lock is out of date with pyproject.toml,
+          # so CI can never quietly test a different set of versions than you do.
+          uv sync --locked --all-groups
+
+      - name: Re-resolve against the newest library commit
+        if: env.MODE == 'latest'
+        run: |
+          set -euo pipefail
+          uv lock --upgrade-package simple-steps-core
+          uv sync --all-groups
+          echo "--- uv.lock diff ---"
+          git diff --stat uv.lock || true
+
+      - name: Verify the environment is what the lock describes
+        run: |
+          set -euo pipefail
+          SHA=$(sed -n 's/.*simple-steps-core\.git?branch=main#\([0-9a-f]*\).*/\1/p' uv.lock | head -1)
+          echo "locked library commit: ${SHA:-<unresolved>}"
+
+          # Nothing may be installed in editable/source mode: the whole point is
+          # that this tests a built artifact the way a real consumer gets it.
+          if uv pip list --format=json | grep -q '"editable_project_location"'; then
+            echo "::error::an editable install leaked into the environment"
+            uv pip list --format=columns
+            exit 1
+          fi
+
+          uv run python -c "import simple_steps_core as m; print('import OK ->', m.__file__)"
+          uv run python -c "import simple_steps_core as m, sys; assert 'site-packages' in m.__file__, m.__file__"
+          uv pip list --format=columns
+
+      - name: Run tests
+        run: uv run pytest -v
+
+      # The suite passing proves nothing regressed *loudly*. This catches the
+      # quiet regressions: a deleted test dropping a capability to `untested`,
+      # or a red result demoted to an xfail. Both leave the suite fully green.
+      - name: Check the capability baseline
+        run: uv run python scripts/check-baseline.py
+
+      # Independent of pytest: runs each example as plain Python and as a
+      # workflow and compares them. Exits non-zero on any divergence.
+      - name: Compare examples against plain Python
+        run: uv run python compare.py
+
+      - name: Publish the capability matrix
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f CAPABILITIES.md ]; then
+            cat CAPABILITIES.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the capability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-report
+          path: |
+            CAPABILITIES.md
+            capability_report.json
+          if-no-files-found: warn
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Environment"
+            echo ""
+            echo "| item | value |"
+            echo "| --- | --- |"
+            echo "| mode | \`$MODE\` |"
+            echo "| python | \`$(uv run python --version 2>&1 || echo n/a)\` |"
+            echo "| library commit | \`$(sed -n 's/.*simple-steps-core\.git?branch=main#\([0-9a-f]*\).*/\1/p' uv.lock | head -1)\` |"
+            echo "| packages locked | \`$(grep -c '^\[\[package\]\]' uv.lock)\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tear down
+        if: always()
+        run: rm -rf "$UV_PROJECT_ENVIRONMENT"

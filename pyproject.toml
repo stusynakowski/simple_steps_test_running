@@ -1,0 +1,40 @@
+# Environment definition for this test bed. `uv.lock` beside it pins every
+# transitive dependency AND the exact simple-steps-core commit, so a rebuild
+# here and a rebuild in CI resolve to byte-identical wheels.
+
+[project]
+name = "simple-steps-test-running"
+version = "0.0.0"
+description = "Consumer test bed for the simple-steps-core library"
+# Pinned to one minor version on purpose: a reproducible environment cannot
+# float across interpreters. Bump deliberately, together with .python-version.
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+  "simple-steps-core",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.uv]
+# This repo consumes the library; it is not itself a distributable package.
+package = false
+
+# Not on PyPI yet. When it is published, delete this block and put a normal
+# version spec in `dependencies` instead -- nothing else here has to change.
+[tool.uv.sources]
+simple-steps-core = { git = "https://github.com/stusynakowski/simple-steps-core.git", branch = "main" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# Registered so a typo'd marker is an error, not a silently ignored decorator
+# that would drop a capability out of the matrix without telling anyone.
+markers = [
+  "capability(*ids): capability ids from capability/catalogue.py this test proves",
+  "awkward(reason): the capability works, but only via a workaround",
+]
+xfail_strict = true
