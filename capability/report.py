@@ -43,6 +43,7 @@ class Observation:
     id: str
     tests: list[str] = field(default_factory=list)
     verdicts: list[str] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
 
     @property
     def verdict(self) -> str:
@@ -50,15 +51,26 @@ class Observation:
             return "untested"
         return max(self.verdicts, key=VERDICTS.index)
 
+    @property
+    def reason(self) -> str:
+        """The explanation attached to the *worst* outcome, which is the
+        one the verdict reflects."""
+        worst = self.verdict
+        for verdict, reason in zip(self.verdicts, self.reasons):
+            if verdict == worst and reason:
+                return " ".join(reason.split())
+        return ""
+
 
 def observations(claims: dict[str, list[tuple[str, str]]]) -> dict[str, Observation]:
     """Fold raw ``{capability_id: [(test_name, verdict), ...]}`` into a report."""
     out: dict[str, Observation] = {}
     for capability in CATALOGUE:
         obs = Observation(capability.id)
-        for test_name, verdict in claims.get(capability.id, []):
+        for test_name, verdict, reason in claims.get(capability.id, []):
             obs.tests.append(test_name)
             obs.verdicts.append(verdict)
+            obs.reasons.append(reason)
         out[capability.id] = obs
     return out
 
@@ -160,6 +172,7 @@ def as_payload(obs: dict[str, Observation]) -> dict:
         "capabilities": {
             i: {
                 "verdict": o.verdict,
+                "reason": o.reason,
                 "tests": sorted(set(o.tests)),
                 "priority": BY_ID[i].priority,
                 "area": BY_ID[i].area,

@@ -67,19 +67,28 @@ def pytest_runtest_makereport(item, call):
     if marker is None:
         return
 
+    reason = ""
     if hasattr(report, "wasxfail") or report.outcome == "skipped":
         # An expected failure: the capability is declared and demonstrably
         # absent. An XPASS arrives as `failed` below, which is what we want —
         # a gap that closed should be loud, not silently green.
         verdict = "gap"
+        # `wasxfail` carries the marker's reason, prefixed by pytest. It is the
+        # only place the *explanation* for a gap lives, so it travels with the
+        # verdict into the report rather than staying in the source.
+        reason = str(getattr(report, "wasxfail", "")).removeprefix("reason: ")
     elif report.passed:
         verdict = "awkward" if item.get_closest_marker("awkward") else "works"
+        awkward = item.get_closest_marker("awkward")
+        if awkward and awkward.args:
+            reason = str(awkward.args[0])
     else:
         verdict = "broken"
+        reason = str(report.longrepr).strip().splitlines()[-1][:300] if report.longrepr else ""
 
     claims = item.config._capability_claims
     for capability_id in marker.args:
-        claims[capability_id].append((item.name, verdict))
+        claims[capability_id].append((item.name, verdict, reason))
 
 
 def is_full_run(config) -> bool:

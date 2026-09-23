@@ -13,19 +13,79 @@ test run and stamped with the exact library commit it was measured against.
 
 ---
 
-## Install
+## Quick start
 
-You need [`uv`](https://docs.astral.sh/uv/). Everything else — including the
-Python interpreter — is installed for you.
+One script installs the library, runs everything, and prints an overview:
 
 ```bash
-brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
-
 git clone https://github.com/stusynakowski/simple_steps_test_running.git
 cd simple_steps_test_running
+./install-and-test.sh
+```
 
-uv python install        # the pinned interpreter (3.12, see .python-version)
-uv sync --locked --all-groups
+That takes about five seconds from a clean checkout. It needs only
+[`uv`](https://docs.astral.sh/uv/) — the Python interpreter and every
+dependency are installed for you, and it tells you how to get `uv` if it is
+missing.
+
+```
+==> installing simple-steps-core and test dependencies
+    ✓ environment built from uv.lock
+
+==> verifying the install
+    ✓ simple_steps_core imports
+    library      simple-steps-core 0.1.0
+    commit       b0245a3022d3
+    install      wheel / site-packages
+
+==> running the test suite
+    ✓ pytest
+==> checking for capability regressions
+    ✓ no capability regressed
+==> comparing examples against plain Python
+    ✓ every example matches its plain-Python oracle
+
+COVERAGE — 41/57 PROVEN (72%)
+──────────────────────────────────────────────────────────────
+  authoring      █████████░░░  6/8    works 6  untested 2
+  orchestration  ██████████░░ 13/15   works 13  gap 2
+  ...
+
+ISSUES FOUND (4)
+  orch.map [gap] · core
+    Apply a tool to each item (mode='map')
+    A MapResult is a pydantic model, so iterating it yields one
+    ('outcomes', [...]) tuple. Orchestrating over a bare map step
+    produces a WRONG ANSWER with no error.
+```
+
+Options:
+
+| flag | effect |
+| --- | --- |
+| `--latest` | re-resolve `simple-steps-core` to its newest commit first |
+| `--no-install` | environment already built; just run the checks |
+| `--quiet` | suppress progress, print only the overview |
+
+Exit codes: `0` everything passed · `1` a check failed · `2` the environment
+could not be built. Test output is hidden unless something fails, at which
+point you get all of it.
+
+Re-print the overview any time without re-running anything:
+
+```bash
+uv run python -m capability.summary
+```
+
+---
+
+## Install by hand
+
+If you would rather drive it yourself:
+
+```bash
+uv python install                 # the pinned interpreter (3.12)
+uv sync --locked --all-groups     # simple-steps-core + test deps
 ```
 
 `--locked` fails outright if `uv.lock` is out of date with `pyproject.toml`, so
@@ -169,6 +229,7 @@ capability/
   provenance.py     what was tested: version, commit, install mode
   report.py         renders CAPABILITIES.md
   baseline.py       the regression gate
+  summary.py        the terminal overview: coverage, issues, backlog
 
 example0_identity_workflow/
   functions.py      plain Python. The oracle. No library import.
@@ -184,6 +245,7 @@ tests/
   test_known_gaps.py        known gaps, as strict xfails
   test_example*.py          per-example detail
 
+install-and-test.sh install, test, and report — the one-shot entry point
 compare.py          run an example both ways, side by side
 CAPABILITIES.md     generated — the coverage matrix
 TESTING.md          how the method works, and what it has found
